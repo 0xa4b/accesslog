@@ -17,12 +17,8 @@ func withTime(t time.Time) optFunc {
 }
 
 func HandlerTesting(w http.ResponseWriter, r *http.Request) {
-	// A very simple health check.
 	w.WriteHeader(http.StatusOK)
 	w.Header().Set("Content-Type", "application/json")
-
-	// In the future we could report back on the status of our DB, or our cache
-	// (e.g. Redis) by performing a simple PING, and include them in the response.
 	io.WriteString(w, `{"testing": true}`)
 }
 
@@ -32,7 +28,6 @@ func TestLoggingMiddleware(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// We create a ResponseRecorder (which satisfies http.ResponseWriter) to record the response.
 	rr := httptest.NewRecorder()
 	buf := new(bytes.Buffer)
 	tm, err := time.Parse("Jan 2, 2006 at 3:04pm (MST)", "Feb 3, 2013 at 7:54pm (PST)")
@@ -42,17 +37,12 @@ func TestLoggingMiddleware(t *testing.T) {
 	aLog := Format(ApacheCommonLogFormat, WithOutput(buf), withTime(tm))
 	handler := aLog(http.HandlerFunc(HandlerTesting))
 
-	// Our handlers satisfy http.Handler, so we can call their ServeHTTP method
-	// directly and pass in our Request and ResponseRecorder.
 	handler.ServeHTTP(rr, req)
 
-	// Check the status code is what we expect.
 	if status := rr.Code; status != http.StatusOK {
 		t.Errorf("wrong status code: got %v expect %v",
 			status, http.StatusOK)
 	}
-
-	// Check the response body is what we expect.
 	expected := `{"testing": true}`
 	if rr.Body.String() != expected {
 		t.Errorf("wrong body: got %v expect %v",
@@ -67,7 +57,6 @@ func TestLoggingMiddlewareWithUser(t *testing.T) {
 	}
 
 	req.SetBasicAuth("Frank", "<none>")
-	// We create a ResponseRecorder (which satisfies http.ResponseWriter) to record the response.
 	rr := httptest.NewRecorder()
 	buf := new(bytes.Buffer)
 	tm, err := time.Parse("Jan 2, 2006 at 3:04pm (MST)", "Feb 3, 2013 at 7:54pm (PST)")
@@ -77,8 +66,6 @@ func TestLoggingMiddlewareWithUser(t *testing.T) {
 	aLog := Format(ApacheCommonLogFormat, WithOutput(buf), withTime(tm))
 	handler := aLog(http.HandlerFunc(HandlerTesting))
 
-	// Our handlers satisfy http.Handler, so we can call their ServeHTTP method
-	// directly and pass in our Request and ResponseRecorder.
 	handler.ServeHTTP(rr, req)
 
 	want1 := `127.0.0.1 - Frank [03/02/2013:07:54:00 +0000] "GET /testing HTTP/1.1" 200 17` + "\n"
@@ -86,13 +73,11 @@ func TestLoggingMiddlewareWithUser(t *testing.T) {
 		t.Errorf("wrong log line: got %v expect %v", buf.String(), want1)
 	}
 
-	// Check the status code is what we expect.
 	if status := rr.Code; status != http.StatusOK {
 		t.Errorf("wrong status code: got %v expect %v",
 			status, http.StatusOK)
 	}
 
-	// Check the response body is what we expect.
 	expected := `{"testing": true}`
 	if rr.Body.String() != expected {
 		t.Errorf("wrong body: got %v expect %v",
@@ -106,7 +91,6 @@ func TestLoggingMiddlewareCombined(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// We create a ResponseRecorder (which satisfies http.ResponseWriter) to record the response.
 	rr := httptest.NewRecorder()
 	buf := new(bytes.Buffer)
 	tm, err := time.Parse("Jan 2, 2006 at 3:04pm (MST)", "Feb 3, 2013 at 7:54pm (PST)")
@@ -117,8 +101,7 @@ func TestLoggingMiddlewareCombined(t *testing.T) {
 	handler := aLog(http.HandlerFunc(HandlerTesting))
 	req.Header.Set("referer", "http://localhost/test")
 	req.Header.Set("user-agent", "Go testing")
-	// Our handlers satisfy http.Handler, so we can call their ServeHTTP method
-	// directly and pass in our Request and ResponseRecorder.
+
 	handler.ServeHTTP(rr, req)
 
 	want1 := `127.0.0.1 - - [03/02/2013:07:54:00 +0000] "GET /testing HTTP/1.1" 200 17 "http://localhost/test" "Go testing"` + "\n"
@@ -126,13 +109,11 @@ func TestLoggingMiddlewareCombined(t *testing.T) {
 		t.Errorf("wrong log line: got %v expect %v", buf.String(), want1)
 	}
 
-	// Check the status code is what we expect.
 	if status := rr.Code; status != http.StatusOK {
 		t.Errorf("wrong status code: got %v expect %v",
 			status, http.StatusOK)
 	}
 
-	// Check the response body is what we expect.
 	expected := `{"testing": true}`
 	if rr.Body.String() != expected {
 		t.Errorf("wrong body: got %v expect %v",
@@ -145,8 +126,6 @@ func TestLoggingMiddlewareCustom(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	// We create a ResponseRecorder (which satisfies http.ResponseWriter) to record the response.
 	rr := httptest.NewRecorder()
 	buf := new(bytes.Buffer)
 	tm, err := time.Parse("Jan 2, 2006 at 3:04pm (MST)", "Feb 3, 2013 at 7:54pm (PST)")
@@ -157,8 +136,6 @@ func TestLoggingMiddlewareCustom(t *testing.T) {
 	handler := aLog(http.HandlerFunc(HandlerTesting))
 	req.Header.Set("referer", "http://localhost/test")
 	req.Header.Set("user-agent", "Go testing")
-	// Our handlers satisfy http.Handler, so we can call their ServeHTTP method
-	// directly and pass in our Request and ResponseRecorder.
 	handler.ServeHTTP(rr, req)
 
 	want1 := `[1359921240 07:54:00 PM] 17` + "\n"
@@ -166,16 +143,62 @@ func TestLoggingMiddlewareCustom(t *testing.T) {
 		t.Errorf("wrong log line: got %v expect %v", buf.String(), want1)
 	}
 
-	// Check the status code is what we expect.
 	if status := rr.Code; status != http.StatusOK {
 		t.Errorf("wrong status code: got %v expect %v",
 			status, http.StatusOK)
 	}
 
-	// Check the response body is what we expect.
 	expected := `{"testing": true}`
 	if rr.Body.String() != expected {
 		t.Errorf("wrong body: got %v expect %v",
 			rr.Body.String(), expected)
+	}
+}
+
+func BenchmarkServeNone(b *testing.B) {
+	b.ReportAllocs()
+
+	req, _ := http.NewRequest("GET", "/testing", nil)
+	rr := httptest.NewRecorder()
+	handler := http.HandlerFunc(HandlerTesting)
+	req.Header.Set("referer", "http://localhost/test")
+	req.Header.Set("user-agent", "Go testing")
+
+	for i := 0; i < b.N; i++ {
+		handler.ServeHTTP(rr, req)
+	}
+}
+
+func BenchmarkServe(b *testing.B) {
+	b.ReportAllocs()
+
+	req, _ := http.NewRequest("GET", "/testing", nil)
+	rr := httptest.NewRecorder()
+	buf := new(bytes.Buffer)
+	tm, _ := time.Parse("Jan 2, 2006 at 3:04pm (MST)", "Feb 3, 2013 at 7:54pm (PST)")
+	aLog := Format("[%{%s %r}t] %b %D", WithOutput(buf), withTime(tm))
+	handler := aLog(http.HandlerFunc(HandlerTesting))
+	req.Header.Set("referer", "http://localhost/test")
+	req.Header.Set("user-agent", "Go testing")
+	for i := 0; i < b.N; i++ {
+		handler.ServeHTTP(rr, req)
+	}
+}
+
+func BenchmarkServeRebuild(b *testing.B) {
+	b.ReportAllocs()
+
+	req, _ := http.NewRequest("GET", "/testing", nil)
+	rr := httptest.NewRecorder()
+	buf := new(bytes.Buffer)
+	tm, _ := time.Parse("Jan 2, 2006 at 3:04pm (MST)", "Feb 3, 2013 at 7:54pm (PST)")
+	aLog := Format(ApacheCombinedLogFormat, WithOutput(buf), withTime(tm))
+	handler := aLog(http.HandlerFunc(HandlerTesting))
+	req.Header.Set("referer", "http://localhost/test")
+	req.Header.Set("user-agent", "Go testing")
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		handler.ServeHTTP(rr, req)
 	}
 }

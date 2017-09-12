@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 )
 
 // optFunc is a type of function that can add options to the option struct during initialization
@@ -35,29 +36,37 @@ func WithOutput(out io.Writer) optFunc {
 	}
 }
 
-// logging is the internal struct that will hold the status and number of bytes written
-type logging struct {
+// alog is the internal struct that will hold the status and number of bytes written
+type alog struct {
 	http.ResponseWriter
+
 	status int
 	wLen   int
+
+	start time.Time
 }
 
 // WriteHeader intercepts the http.ResponseWriter WriteHeader method so we can save the status to display later
-func (l *logging) WriteHeader(i int) {
-	if l.status == 0 {
-		l.status = i
+func (a *alog) WriteHeader(i int) {
+	if a.status == 0 {
+		a.status = i
 	}
-	l.ResponseWriter.WriteHeader(i)
+	a.ResponseWriter.WriteHeader(i)
 }
 
 // Write intercepts the http.ResponseWriter Write method so we can capture the bytes written
-func (l *logging) Write(p []byte) (n int, err error) {
-	if l.status == 0 {
-		l.status = http.StatusOK
+func (a *alog) Write(p []byte) (n int, err error) {
+	if a.status == 0 {
+		a.status = http.StatusOK
 	}
-	n, err = l.ResponseWriter.Write(p)
-	l.wLen += n
+	n, err = a.ResponseWriter.Write(p)
+	a.wLen += n
 	return
+}
+
+// startTime sets the start time to calculate the elapsed time for the %D directive
+func (a *alog) startTime() {
+	a.start = time.Now()
 }
 
 const (
@@ -71,6 +80,7 @@ var ApacheCommonLog = Format(ApacheCommonLogFormat)
 // ApacheCombinedLog will log HTTP requests using the Apache Combined Log format
 var ApacheCombinedLog = Format(ApacheCombinedLogFormat)
 
+// convertTimeFormat converts strftime formatting directives to a go time.Time format
 func convertTimeFormat(t time.Time, s string) string {
 	m := map[rune]string{
 		'a': "Mon",
@@ -170,6 +180,136 @@ func convertTimeFormat(t time.Time, s string) string {
 	return f
 }
 
+// logfmt the type that will hold all of the runtime formating
+type logfmt struct {
+	ti time.Time
+	rq *http.Request
+	al *alog
+
+	h, u, t, q, e, ws, wl string
+}
+
+func (lf *logfmt) withTime(o *opt) *logfmt {
+	if !o.Time.IsZero() {
+		lf.ti = o.Time
+		return lf
+	}
+	lf.ti = time.Now()
+	return lf
+}
+
+func (lf *logfmt) withRequest(r *http.Request) *logfmt {
+	lf.rq = r
+	return lf
+}
+
+func (lf *logfmt) withResponse(a *alog) *logfmt {
+	lf.al = a
+	return lf
+}
+
+func (lf *logfmt) timeFormatted(format string) string {
+	if len(lf.t) == 0 {
+		lf.t = lf.ti.Format(format)
+	}
+	return lf.t
+}
+
+func (lf *logfmt) remoteHostname() string {
+	if len(lf.h) == 0 {
+		lf.h = lf.rq.URL.Host
+		if len(lf.h) == 0 {
+			lf.h = "127.0.0.1"
+		}
+	}
+	return lf.h
+}
+
+func (lf *logfmt) username() string {
+	if len(lf.u) == 0 {
+		lf.u = "-"
+		if s := strings.SplitN(lf.rq.Header.Get("Authorization"), " ", 2); len(s) == 2 {
+			if b, err := base64.StdEncoding.DecodeString(s[1]); err == nil {
+				if pair := strings.SplitN(string(b), ":", 2); len(pair) == 2 {
+					lf.u = pair[0]
+				}
+			}
+		}
+	}
+	return lf.u
+}
+
+func (lf *logfmt) requestLine() string {
+	if len(lf.q) == 0 {
+		lf.q = strings.ToUpper(lf.rq.Method) + " " + lf.rq.URL.Path + " " + lf.rq.Proto
+	}
+	return lf.q
+}
+
+func (lf *logfmt) status() string {
+	if len(lf.ws) == 0 {
+		lf.ws = strconv.Itoa(lf.al.status)
+	}
+	return lf.ws
+}
+
+func (lf *logfmt) bytesWritten() string {
+	if len(lf.wl) == 0 {
+		lf.wl = strconv.Itoa(lf.al.wLen)
+	}
+	return lf.wl
+}
+
+func (lf *logfmt) timeElapsed() string {
+	if len(lf.e) > 0 {
+		lf.e = time.Now().Sub(lf.al.start).String()
+	}
+	return lf.e
+}
+
+// flatten takes two slices and merges them into one
+func flatten(o *opt, a, b []string) func(w *alog, r *http.Request) string {
+	return func(w *alog, r *http.Request) string {
+		lf := new(logfmt)
+		lf.withTime(o).withRequest(r).withResponse(w)
+
+		buf := new(bytes.Buffer)
+		for i, s := range a {
+			switch s {
+			case "":
+				buf.WriteString(b[i])
+			case "%h":
+				buf.WriteString(lf.remoteHostname())
+			case "%l":
+				buf.WriteString("-")
+			case "%u":
+				buf.WriteString(lf.username())
+			case "%t":
+				buf.WriteString(lf.timeFormatted("[02/01/2006:03:04:05 -0700]"))
+			case "%r":
+				buf.WriteString(lf.requestLine())
+			case "%s", "%>s":
+				buf.WriteString(lf.status())
+			case "%b":
+				buf.WriteString(lf.bytesWritten())
+			case "%D":
+				buf.WriteString(lf.timeElapsed())
+			default:
+				if len(s) > 4 && s[:2] == "%{" && s[len(s)-2] == '}' {
+					label := s[2 : len(s)-2]
+					switch s[len(s)-1] {
+					case 'i':
+						buf.WriteString(r.Header.Get(label))
+					case 't':
+						buf.WriteString(convertTimeFormat(lf.ti, label))
+					}
+				}
+			}
+		}
+		return buf.String()
+	}
+}
+
 // Format accepts a format using Apache formatting directives with option functions and returns a function that can handle standard HTTP middleware.
 func Format(format string, opts ...optFunc) func(http.Handler) http.Handler {
 	options := newOpt()
@@ -177,146 +317,62 @@ func Format(format string, opts ...optFunc) func(http.Handler) http.Handler {
 		opt(options)
 	}
 
-	add := func(logVals []interface{}, indexes []int, v interface{}) {
-		for _, i := range indexes {
-			logVals[i] = v
-		}
-	}
+	var directives, betweens = make([]string, 0, 50), make([]string, 0, 50)
+	var mBuf *bytes.Buffer
+	aBuf, bBuf := new(bytes.Buffer), new(bytes.Buffer)
+	mBuf = bBuf
 
-	var formatStr []string
-	var formatVals = make(map[rune][]int)
-	var headerVals = make(map[int]string)
-
-	var headerKey string
-	var isFmtDirective, isHeader bool
-	var fmtDirectiveIdx int
-
-	var buf = new(bytes.Buffer)
-	for _, r := range format {
-		if !isHeader && !isFmtDirective && r == '%' {
-			isFmtDirective = true
-			if buf.Len() > 0 {
-				formatStr = append(formatStr, buf.String())
-				buf.Reset()
-			}
-			continue
-		}
-		if isFmtDirective {
-			switch r {
-			case '>':
-				continue // just skip...
-			case '{':
-				isHeader = true
-				headerKey = ""
-				if buf.Len() > 0 {
-					formatStr = append(formatStr, buf.String())
-					buf.Reset()
-				}
-				isFmtDirective = false
-				continue
-			case '%':
-				formatStr = append(formatStr, "%%")
-				fmtDirectiveIdx -= 1 // because there is no value
-			case 'i', 't':
-				if len(headerKey) > 0 {
-					headerVals[fmtDirectiveIdx] = headerKey
-				}
-				fallthrough
-			case 'h', 'l', 'u', 'r':
-				formatStr = append(formatStr, "%s")
-				if _, ok := formatVals[r]; ok {
-					formatVals[r] = append(formatVals[r], fmtDirectiveIdx)
-				} else {
-					formatVals[r] = []int{fmtDirectiveIdx}
-				}
-			case 'b', 's':
-				formatStr = append(formatStr, "%d")
-				if _, ok := formatVals[r]; ok {
-					formatVals[r] = append(formatVals[r], fmtDirectiveIdx)
-				} else {
-					formatVals[r] = []int{fmtDirectiveIdx}
-				}
-			}
-			fmtDirectiveIdx++
-			isFmtDirective = false
-			continue
-		}
+	var isDirective, isEnclosure bool
+	for i, r := range format {
 		switch r {
+		case '%':
+			if isDirective {
+				mBuf.WriteRune(r)
+				continue
+			}
+			isDirective = true
+			if i != 0 {
+				directives = append(directives, aBuf.String())
+				betweens = append(betweens, bBuf.String())
+				aBuf.Reset()
+				bBuf.Reset()
+			}
+			mBuf = aBuf
+		case '{':
+			isEnclosure = true
 		case '}':
-			isHeader = false
-			if buf.Len() > 0 {
-				headerKey = buf.String()
-				isFmtDirective = true
-				buf.Reset()
-			}
-			continue
-		}
-		buf.WriteRune(r)
-	}
-	if buf.Len() > 0 {
-		formatStr = append(formatStr, buf.String())
-	}
-	buf.Reset()
-
-	logStr := strings.Join(formatStr, "")
-	logFunc := func(w *logging, r *http.Request) string {
-
-		logVals := make([]interface{}, fmtDirectiveIdx)
-		for k, v := range formatVals {
-			switch k {
-			case 'h':
-				host := "127.0.0.1"
-				if r.URL != nil && len(r.URL.Host) > 0 {
-					host = r.URL.Host
+			isEnclosure = false
+		case '>':
+			// do the same thing
+		default:
+			if isDirective && !isEnclosure && !unicode.IsLetter(r) {
+				isDirective = false
+				isEnclosure = false
+				if i != 0 {
+					directives = append(directives, aBuf.String())
+					betweens = append(betweens, bBuf.String())
+					aBuf.Reset()
+					bBuf.Reset()
 				}
-				add(logVals, v, host)
-			case 'l':
-				add(logVals, v, "-")
-			case 'u':
-				un := "-"
-				s := strings.SplitN(r.Header.Get("Authorization"), " ", 2)
-				if len(s) == 2 {
-					b, err := base64.StdEncoding.DecodeString(s[1])
-					if err == nil {
-						pair := strings.SplitN(string(b), ":", 2)
-						if len(pair) == 2 {
-							un = pair[0]
-						}
-					}
-				}
-				add(logVals, v, un)
-			case 't':
-				t := time.Now()
-				if !options.Time.IsZero() {
-					t = options.Time
-				}
-				for _, i := range v {
-					if _, ok := headerVals[i]; ok {
-						logVals[i] = convertTimeFormat(t, headerVals[i])
-					} else {
-						logVals[i] = t.Format("[02/01/2006:03:04:05 -0700]")
-					}
-				}
-			case 'r':
-				add(logVals, v, strings.ToUpper(r.Method)+" "+r.URL.Path+" "+r.Proto)
-			case 's':
-				add(logVals, v, w.status)
-			case 'b':
-				add(logVals, v, w.wLen)
-			case 'i':
-				for _, i := range v {
-					logVals[i] = r.Header.Get(headerVals[i])
-				}
+				mBuf = bBuf
 			}
 		}
-		return fmt.Sprintf(logStr, logVals...)
+		mBuf.WriteRune(r)
 	}
+
+	directives = append(directives, aBuf.String())
+	betweens = append(betweens, bBuf.String())
+	aBuf.Reset()
+	bBuf.Reset()
+
+	logFunc := flatten(options, directives, betweens)
 
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			l := &logging{ResponseWriter: w, status: 0, wLen: 0}
-			next.ServeHTTP(l, r)
-			fmt.Fprintln(options.Out, logFunc(l, r))
+			a := &alog{ResponseWriter: w}
+			a.startTime()
+			next.ServeHTTP(a, r)
+			fmt.Fprintln(options.Out, logFunc(a, r))
 		})
 	}
 }
