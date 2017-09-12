@@ -65,13 +65,13 @@ const (
 )
 
 // ApacheCommonLog will log HTTP requests using the Apache Common Log format
-var ApacheCommonLog = Log(ApacheCommonLogFormat)
+var ApacheCommonLog = Format(ApacheCommonLogFormat)
 
 // ApacheCombinedLog will log HTTP requests using the Apache Combined Log format
-var ApacheCombinedLog = Log(ApacheCombinedLogFormat)
+var ApacheCombinedLog = Format(ApacheCombinedLogFormat)
 
-// Log accepts a format using Apache formatting directives with option functions and returns a function that can handle standard HTTP middleware.
-func Log(format string, opts ...optFunc) func(http.Handler) http.Handler {
+// Format accepts a format using Apache formatting directives with option functions and returns a function that can handle standard HTTP middleware.
+func Format(format string, opts ...optFunc) func(http.Handler) http.Handler {
 	options := newOpt()
 	for _, opt := range opts {
 		opt(options)

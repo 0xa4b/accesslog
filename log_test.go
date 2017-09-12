@@ -39,7 +39,7 @@ func TestLoggingMiddleware(t *testing.T) {
 	if err != nil {
 		t.Errorf("parse time error: %v", err)
 	}
-	aLog := Log(ApacheCommonLogFormat, WithOutput(buf), withTime(tm))
+	aLog := Format(ApacheCommonLogFormat, WithOutput(buf), withTime(tm))
 	handler := aLog(http.HandlerFunc(HandlerTesting))
 
 	// Our handlers satisfy http.Handler, so we can call their ServeHTTP method
@@ -74,7 +74,7 @@ func TestLoggingMiddlewareWithUser(t *testing.T) {
 	if err != nil {
 		t.Errorf("parse time error: %v", err)
 	}
-	aLog := Log(ApacheCommonLogFormat, WithOutput(buf), withTime(tm))
+	aLog := Format(ApacheCommonLogFormat, WithOutput(buf), withTime(tm))
 	handler := aLog(http.HandlerFunc(HandlerTesting))
 
 	// Our handlers satisfy http.Handler, so we can call their ServeHTTP method
@@ -113,7 +113,7 @@ func TestLoggingMiddlewareCombined(t *testing.T) {
 	if err != nil {
 		t.Errorf("parse time error: %v", err)
 	}
-	aLog := Log(ApacheCombinedLogFormat, WithOutput(buf), withTime(tm))
+	aLog := Format(ApacheCombinedLogFormat, WithOutput(buf), withTime(tm))
 	handler := aLog(http.HandlerFunc(HandlerTesting))
 	req.Header.Set("referer", "http://localhost/test")
 	req.Header.Set("user-agent", "Go testing")
