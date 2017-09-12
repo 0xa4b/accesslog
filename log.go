@@ -310,6 +310,9 @@ func flatten(o *opt, a, b []string) func(w *alog, r *http.Request) string {
 	}
 }
 
+// FormatWith accepts a format using Apache formatting and returns a function accepting option functions
+// which then returns a function that can handle standard HTTP middleware. This is to have better standard
+// logging functions accessible from the library
 func FormatWith(format string) func(...optFunc) func(http.Handler) http.Handler {
 	return func(opts ...optFunc) func(http.Handler) http.Handler {
 		return Format(format, opts...)
