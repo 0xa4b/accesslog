@@ -130,8 +130,8 @@ func Log(format string, opts ...optFunc) func(http.Handler) http.Handler {
 				}
 			case 'b', 's':
 				formatStr = append(formatStr, "%d")
-				if val, ok := formatVals[r]; ok {
-					val = append(val, fmtDirectiveIdx)
+				if _, ok := formatVals[r]; ok {
+					formatVals[r] = append(formatVals[r], fmtDirectiveIdx)
 				} else {
 					formatVals[r] = []int{fmtDirectiveIdx}
 				}
