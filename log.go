@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -70,6 +71,105 @@ var ApacheCommonLog = Format(ApacheCommonLogFormat)
 // ApacheCombinedLog will log HTTP requests using the Apache Combined Log format
 var ApacheCombinedLog = Format(ApacheCombinedLogFormat)
 
+func convertTimeFormat(t time.Time, s string) string {
+	m := map[rune]string{
+		'a': "Mon",
+		'A': "Monday",
+		'b': "Jan",
+		'B': "January",
+		'c': "?",
+		'C': "06",
+		'd': "02",
+		'D': "01/02/06",
+		'e': "_2",
+		'E': "?",
+		'F': "2006-01-02",
+		'G': "%d",
+		'g': "%s",
+		'h': "Jan",
+		'H': "15",
+		'I': "3",
+		'j': "%d",
+		'k': "•15",
+		'l': "_3",
+		'm': "01",
+		'M': "04",
+		'n': "\n",
+		'O': "?",
+		'p': "PM",
+		'P': "pm",
+		'r': "03:04:05 PM",
+		'R': "15:04",
+		's': "%d",
+		'S': "05",
+		't': "\t",
+		'T': "15:04:05",
+		'u': "%d",
+		'U': "?",
+		'V': "%d",
+		'w': "%d",
+		'W': "?",
+		'x': "?",
+		'X': "?",
+		'y': "06",
+		'Y': "2006",
+		'z': "-700",
+		'Z': "MST",
+		'+': "?",
+		'%': "%%",
+	}
+
+	var i []interface{}
+	var x bool
+	buf := new(bytes.Buffer)
+	for _, r := range s {
+		if r == '%' {
+			x = true
+			continue
+		}
+		if x {
+			x = false
+			if val, ok := m[r]; ok {
+				if val == "%s" || val == "%d" {
+					switch r {
+					case 'G':
+						y, _ := t.ISOWeek()
+						i = append(i, y)
+					case 'g':
+						y, _ := t.ISOWeek()
+						i = append(i, strconv.Itoa(y)[2:])
+					case 'j':
+						i = append(i, t.YearDay())
+					case 's':
+						i = append(i, t.Unix())
+					case 'u':
+						w := t.Weekday()
+						if w == 0 {
+							w = 7
+						}
+						i = append(i, w)
+					case 'V':
+						_, w := t.ISOWeek()
+						i = append(i, w)
+					case 'w':
+						i = append(i, t.Weekday())
+					}
+				}
+				buf.WriteString(val)
+				continue
+			}
+			buf.WriteRune('%')
+		}
+		buf.WriteRune(r)
+	}
+	f := t.Format(buf.String())
+	if len(i) > 0 {
+		f = fmt.Sprintf(f, i...)
+	}
+	buf.Reset()
+	return f
+}
+
 // Format accepts a format using Apache formatting directives with option functions and returns a function that can handle standard HTTP middleware.
 func Format(format string, opts ...optFunc) func(http.Handler) http.Handler {
 	options := newOpt()
@@ -88,12 +188,12 @@ func Format(format string, opts ...optFunc) func(http.Handler) http.Handler {
 	var headerVals = make(map[int]string)
 
 	var headerKey string
-	var isFmtDirective bool
+	var isFmtDirective, isHeader bool
 	var fmtDirectiveIdx int
 
 	var buf = new(bytes.Buffer)
 	for _, r := range format {
-		if !isFmtDirective && r == '%' {
+		if !isHeader && !isFmtDirective && r == '%' {
 			isFmtDirective = true
 			if buf.Len() > 0 {
 				formatStr = append(formatStr, buf.String())
@@ -106,6 +206,7 @@ func Format(format string, opts ...optFunc) func(http.Handler) http.Handler {
 			case '>':
 				continue // just skip...
 			case '{':
+				isHeader = true
 				headerKey = ""
 				if buf.Len() > 0 {
 					formatStr = append(formatStr, buf.String())
@@ -142,6 +243,7 @@ func Format(format string, opts ...optFunc) func(http.Handler) http.Handler {
 		}
 		switch r {
 		case '}':
+			isHeader = false
 			if buf.Len() > 0 {
 				headerKey = buf.String()
 				isFmtDirective = true
@@ -188,7 +290,13 @@ func Format(format string, opts ...optFunc) func(http.Handler) http.Handler {
 				if !options.Time.IsZero() {
 					t = options.Time
 				}
-				add(logVals, v, t.Format("[02/01/2006:03:04:05 -0700]"))
+				for _, i := range v {
+					if _, ok := headerVals[i]; ok {
+						logVals[i] = convertTimeFormat(t, headerVals[i])
+					} else {
+						logVals[i] = t.Format("[02/01/2006:03:04:05 -0700]")
+					}
+				}
 			case 'r':
 				add(logVals, v, strings.ToUpper(r.Method)+" "+r.URL.Path+" "+r.Proto)
 			case 's':
