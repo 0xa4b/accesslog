@@ -9,6 +9,13 @@ import (
 	"time"
 )
 
+// withTime sets the time to use when logging. This should be used only for testing
+func withTime(t time.Time) optFunc {
+	return func(o *opt) {
+		o.Time = t
+	}
+}
+
 func HandlerTesting(w http.ResponseWriter, r *http.Request) {
 	// A very simple health check.
 	w.WriteHeader(http.StatusOK)

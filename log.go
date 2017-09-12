@@ -11,37 +11,37 @@ import (
 	"time"
 )
 
+// optFunc is a type of function that can add options to the option struct during initialization
 type optFunc func(*opt)
 
+// opt is the struct that holds the options for logging.
 type opt struct {
 	Out  io.Writer
 	Time time.Time
 }
 
+// newOpt returns a new struct to hold options, with the default output to stdout.
 func newOpt() *opt {
 	o := new(opt)
 	o.Out = os.Stdout
 	return o
 }
 
+// WithOutput sets the io.Writer output for the log file.
 func WithOutput(out io.Writer) optFunc {
 	return func(o *opt) {
 		o.Out = out
 	}
 }
 
-func withTime(t time.Time) optFunc {
-	return func(o *opt) {
-		o.Time = t
-	}
-}
-
+// logging is the internal struct that will hold the status and number of bytes written
 type logging struct {
 	http.ResponseWriter
 	status int
 	wLen   int
 }
 
+// WriteHeader intercepts the http.ResponseWriter WriteHeader method so we can save the status to display later
 func (l *logging) WriteHeader(i int) {
 	if l.status == 0 {
 		l.status = i
@@ -49,6 +49,7 @@ func (l *logging) WriteHeader(i int) {
 	l.ResponseWriter.WriteHeader(i)
 }
 
+// Write intercepts the http.ResponseWriter Write method so we can capture the bytes written
 func (l *logging) Write(p []byte) (n int, err error) {
 	if l.status == 0 {
 		l.status = http.StatusOK
@@ -58,12 +59,18 @@ func (l *logging) Write(p []byte) (n int, err error) {
 	return
 }
 
-const ApacheCommonLogFormat = "%h %l %u %t \"%r\" %>s %b"
-const ApacheCombinedLogFormat = "%h %l %u %t \"%r\" %>s %b \"%{Referer}i\" \"%{User-agent}i\""
+const (
+	ApacheCommonLogFormat   = "%h %l %u %t \"%r\" %>s %b"                                    // The Common Log directives
+	ApacheCombinedLogFormat = "%h %l %u %t \"%r\" %>s %b \"%{Referer}i\" \"%{User-agent}i\"" // The Combined Log directives
+)
 
+// ApacheCommonLog will log HTTP requests using the Apache Common Log format
 var ApacheCommonLog = Log(ApacheCommonLogFormat)
+
+// ApacheCombinedLog will log HTTP requests using the Apache Combined Log format
 var ApacheCombinedLog = Log(ApacheCombinedLogFormat)
 
+// Log accepts a format using Apache formatting directives with option functions and returns a function that can handle standard HTTP middleware.
 func Log(format string, opts ...optFunc) func(http.Handler) http.Handler {
 	options := newOpt()
 	for _, opt := range opts {
