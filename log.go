@@ -75,10 +75,10 @@ const (
 )
 
 // ApacheCommonLog will log HTTP requests using the Apache Common Log format
-var ApacheCommonLog = Format(ApacheCommonLogFormat)
+var ApacheCommonLog = FormatWith(ApacheCommonLogFormat)
 
 // ApacheCombinedLog will log HTTP requests using the Apache Combined Log format
-var ApacheCombinedLog = Format(ApacheCombinedLogFormat)
+var ApacheCombinedLog = FormatWith(ApacheCombinedLogFormat)
 
 // convertTimeFormat converts strftime formatting directives to a go time.Time format
 func convertTimeFormat(t time.Time, s string) string {
@@ -307,6 +307,12 @@ func flatten(o *opt, a, b []string) func(w *alog, r *http.Request) string {
 			}
 		}
 		return buf.String()
+	}
+}
+
+func FormatWith(format string) func(...optFunc) func(http.Handler) http.Handler {
+	return func(opts ...optFunc) func(http.Handler) http.Handler {
+		return Format(format, opts...)
 	}
 }
 
