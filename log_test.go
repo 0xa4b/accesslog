@@ -34,7 +34,7 @@ func TestLoggingMiddleware(t *testing.T) {
 	if err != nil {
 		t.Errorf("parse time error: %v", err)
 	}
-	aLog := Format(ApacheCommonLogFormat, WithOutput(buf), withTime(tm))
+	aLog := FormatWith(ApacheCommonLogFormat, WithOutput(buf), withTime(tm))
 	handler := aLog(http.HandlerFunc(HandlerTesting))
 
 	handler.ServeHTTP(rr, req)
@@ -132,7 +132,7 @@ func TestLoggingMiddlewareCustom(t *testing.T) {
 	if err != nil {
 		t.Errorf("parse time error: %v", err)
 	}
-	aLog := Format("[%{%s %r}t] %b", WithOutput(buf), withTime(tm))
+	aLog := FormatWith("[%{%s %r}t] %b", WithOutput(buf), withTime(tm))
 	handler := aLog(http.HandlerFunc(HandlerTesting))
 	req.Header.Set("referer", "http://localhost/test")
 	req.Header.Set("user-agent", "Go testing")
@@ -176,7 +176,7 @@ func BenchmarkServe(b *testing.B) {
 	rr := httptest.NewRecorder()
 	buf := new(bytes.Buffer)
 	tm, _ := time.Parse("Jan 2, 2006 at 3:04pm (MST)", "Feb 3, 2013 at 7:54pm (PST)")
-	aLog := Format("[%{%s %r}t] %b %D", WithOutput(buf), withTime(tm))
+	aLog := FormatWith("[%{%s %r}t] %b %D", WithOutput(buf), withTime(tm))
 	handler := aLog(http.HandlerFunc(HandlerTesting))
 	req.Header.Set("referer", "http://localhost/test")
 	req.Header.Set("user-agent", "Go testing")
@@ -192,7 +192,7 @@ func BenchmarkServeRebuild(b *testing.B) {
 	rr := httptest.NewRecorder()
 	buf := new(bytes.Buffer)
 	tm, _ := time.Parse("Jan 2, 2006 at 3:04pm (MST)", "Feb 3, 2013 at 7:54pm (PST)")
-	aLog := Format(ApacheCombinedLogFormat, WithOutput(buf), withTime(tm))
+	aLog := FormatWith(ApacheCombinedLogFormat, WithOutput(buf), withTime(tm))
 	handler := aLog(http.HandlerFunc(HandlerTesting))
 	req.Header.Set("referer", "http://localhost/test")
 	req.Header.Set("user-agent", "Go testing")

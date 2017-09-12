@@ -75,10 +75,10 @@ const (
 )
 
 // ApacheCommonLog will log HTTP requests using the Apache Common Log format
-var ApacheCommonLog = FormatWith(ApacheCommonLogFormat)
+var ApacheCommonLog = Format(ApacheCommonLogFormat)
 
 // ApacheCombinedLog will log HTTP requests using the Apache Combined Log format
-var ApacheCombinedLog = FormatWith(ApacheCombinedLogFormat)
+var ApacheCombinedLog = Format(ApacheCombinedLogFormat)
 
 // convertTimeFormat converts strftime formatting directives to a go time.Time format
 func convertTimeFormat(t time.Time, s string) string {
@@ -310,17 +310,17 @@ func flatten(o *opt, a, b []string) func(w *alog, r *http.Request) string {
 	}
 }
 
-// FormatWith accepts a format using Apache formatting and returns a function accepting option functions
+// Format accepts a format using Apache formatting and returns a function accepting option functions
 // which then returns a function that can handle standard HTTP middleware. This is to have better standard
 // logging functions accessible from the library
-func FormatWith(format string) func(...optFunc) func(http.Handler) http.Handler {
+func Format(format string) func(...optFunc) func(http.Handler) http.Handler {
 	return func(opts ...optFunc) func(http.Handler) http.Handler {
-		return Format(format, opts...)
+		return FormatWith(format, opts...)
 	}
 }
 
-// Format accepts a format using Apache formatting directives with option functions and returns a function that can handle standard HTTP middleware.
-func Format(format string, opts ...optFunc) func(http.Handler) http.Handler {
+// FormatWith accepts a format using Apache formatting directives with option functions and returns a function that can handle standard HTTP middleware.
+func FormatWith(format string, opts ...optFunc) func(http.Handler) http.Handler {
 	options := newOpt()
 	for _, opt := range opts {
 		opt(options)
