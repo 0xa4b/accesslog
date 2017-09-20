@@ -105,7 +105,6 @@ var timeFmtMap = map[rune]string{
 // convertTimeFormat converts strftime formatting directives to a go time.Time format
 func convertTimeFormat(now time.Time, format string) string {
 	var isDirective bool
-	var calcTime []int64
 	var buf = new(bytes.Buffer)
 	for _, r := range format {
 		if !isDirective && r == '%' {
@@ -117,51 +116,41 @@ func convertTimeFormat(now time.Time, format string) string {
 			continue
 		}
 		if val, ok := timeFmtMap[r]; ok {
-			if val == "%v" {
+			switch val {
+			case "%v":
 				switch r {
 				case 'G':
 					y, _ := now.ISOWeek()
-					calcTime = append(calcTime, int64(y))
+					buf.WriteString(strconv.Itoa(y))
 				case 'g':
 					y, _ := now.ISOWeek()
 					y -= (y / 100) * 100
-					calcTime = append(calcTime, int64(y))
-					buf.WriteString("%02d") // we need to pad the number
-					isDirective = false
-					continue
+					buf.WriteString(fmt.Sprintf("%02d", y))
 				case 'j':
-					calcTime = append(calcTime, int64(now.YearDay()))
+					buf.WriteString(strconv.Itoa(now.YearDay()))
 				case 's':
-					calcTime = append(calcTime, now.Unix())
+					buf.WriteString(strconv.FormatInt(now.Unix(), 10))
 				case 'u':
 					w := now.Weekday()
 					if w == 0 {
 						w = 7
 					}
-					calcTime = append(calcTime, int64(w))
+					buf.WriteString(strconv.Itoa(int(w)))
 				case 'V':
 					_, w := now.ISOWeek()
-					calcTime = append(calcTime, int64(w))
+					buf.WriteString(strconv.Itoa(w))
 				case 'w':
-					calcTime = append(calcTime, int64(now.Weekday()))
+					buf.WriteString(strconv.Itoa(int(now.Weekday())))
 				}
+			default:
+				buf.WriteString(now.Format(val))
 			}
-			buf.WriteString(val)
 			isDirective = false
 			continue
 		}
 		buf.WriteString("(%" + string(r) + " is invalid)")
 	}
-	s := now.Format(buf.String())
-	if len(calcTime) > 0 {
-		ctInter := make([]interface{}, len(calcTime))
-		for i := range calcTime {
-			ctInter[i] = calcTime[i]
-		}
-		s = fmt.Sprintf(s, ctInter...)
-	}
-	buf.Reset()
-	return s
+	return buf.String()
 }
 
 // line is the type that will hold all of the runtime formating directives for the log line
