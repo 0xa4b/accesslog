@@ -84,28 +84,28 @@ var ApacheCommonLog = Format(ApacheCommonLogFormat)
 // ApacheCombinedLog will log HTTP requests using the Apache Combined Log format
 var ApacheCombinedLog = Format(ApacheCombinedLogFormat)
 
+var timeFmtMap = map[rune]string{
+	'a': "Mon", 'A': "Monday", 'b': "Jan", 'B': "January", 'C': "06",
+	'd': "02", 'D': "01/02/06", 'e': "_2", 'F': "2006-01-02",
+	'h': "Jan", 'H': "15", 'I': "3", 'k': "•15", 'l': "_3",
+	'm': "01", 'M': "04", 'n': "\n", 'p': "PM", 'P': "pm",
+	'r': "03:04:05 PM", 'R': "15:04", 'S': "05",
+	't': "\t", 'T': "15:04:05", 'y': "06", 'Y': "2006",
+	'z': "-700", 'Z': "MST", '%': "%%",
+
+	// require calculated time
+	'G': "%v", 'g': "%v", 'j': "%v", 's': "%v",
+	'u': "%v", 'V': "%v", 'w': "%v",
+
+	// Unsupported directives
+	'c': "?", 'E': "?", 'O': "?", 'U': "?",
+	'W': "?", 'x': "?", 'X': "?", '+': "?",
+}
+
 // convertTimeFormat converts strftime formatting directives to a go time.Time format
 func convertTimeFormat(now time.Time, format string) string {
-	m := map[rune]string{
-		'a': "Mon", 'A': "Monday", 'b': "Jan", 'B': "January", 'C': "06",
-		'd': "02", 'D': "01/02/06", 'e': "_2", 'F': "2006-01-02",
-		'h': "Jan", 'H': "15", 'I': "3", 'k': "•15", 'l': "_3",
-		'm': "01", 'M': "04", 'n': "\n", 'p': "PM", 'P': "pm",
-		'r': "03:04:05 PM", 'R': "15:04", 'S': "05",
-		't': "\t", 'T': "15:04:05", 'y': "06", 'Y': "2006",
-		'z': "-700", 'Z': "MST", '%': "%%",
-
-		// require calculated time
-		'G': "%v", 'g': "%v", 'j': "%v", 's': "%v",
-		'u': "%v", 'V': "%v", 'w': "%v",
-
-		// Unsupported directives
-		'c': "?", 'E': "?", 'O': "?", 'U': "?",
-		'W': "?", 'x': "?", 'X': "?", '+': "?",
-	}
-
 	var isDirective bool
-	var calcTime []interface{}
+	var calcTime []int64
 	var buf = new(bytes.Buffer)
 	for _, r := range format {
 		if !isDirective && r == '%' {
@@ -116,17 +116,21 @@ func convertTimeFormat(now time.Time, format string) string {
 			buf.WriteRune(r)
 			continue
 		}
-		if val, ok := m[r]; ok {
+		if val, ok := timeFmtMap[r]; ok {
 			if val == "%v" {
 				switch r {
 				case 'G':
 					y, _ := now.ISOWeek()
-					calcTime = append(calcTime, y)
+					calcTime = append(calcTime, int64(y))
 				case 'g':
 					y, _ := now.ISOWeek()
-					calcTime = append(calcTime, strconv.Itoa(y)[2:])
+					y -= (y / 100) * 100
+					calcTime = append(calcTime, int64(y))
+					buf.WriteString("%02d") // we need to pad the number
+					isDirective = false
+					continue
 				case 'j':
-					calcTime = append(calcTime, now.YearDay())
+					calcTime = append(calcTime, int64(now.YearDay()))
 				case 's':
 					calcTime = append(calcTime, now.Unix())
 				case 'u':
@@ -134,12 +138,12 @@ func convertTimeFormat(now time.Time, format string) string {
 					if w == 0 {
 						w = 7
 					}
-					calcTime = append(calcTime, w)
+					calcTime = append(calcTime, int64(w))
 				case 'V':
 					_, w := now.ISOWeek()
-					calcTime = append(calcTime, w)
+					calcTime = append(calcTime, int64(w))
 				case 'w':
-					calcTime = append(calcTime, now.Weekday())
+					calcTime = append(calcTime, int64(now.Weekday()))
 				}
 			}
 			buf.WriteString(val)
@@ -150,7 +154,11 @@ func convertTimeFormat(now time.Time, format string) string {
 	}
 	s := now.Format(buf.String())
 	if len(calcTime) > 0 {
-		s = fmt.Sprintf(s, calcTime...)
+		ctInter := make([]interface{}, len(calcTime))
+		for i := range calcTime {
+			ctInter[i] = calcTime[i]
+		}
+		s = fmt.Sprintf(s, ctInter...)
 	}
 	buf.Reset()
 	return s
